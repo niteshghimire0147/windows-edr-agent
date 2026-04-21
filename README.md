@@ -12,6 +12,22 @@ The agent continuously analyzes running processes, service configurations, paren
 
 ---
 
+## 🎥 Demo
+
+![Dashboard](screenshots/dashboard.png)
+
+---
+
+## ⚡ Key Highlights
+
+- Real-time process & service monitoring
+- MITRE ATT&CK mapped detections
+- Baseline drift detection
+- Automated threat response (process kill)
+- SIEM-ready JSON logging
+
+---
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -28,6 +44,7 @@ The agent continuously analyzes running processes, service configurations, paren
 - [Examples](#examples)
 - [Disclaimer](#disclaimer)
 - [Author](#author)
+- [License](#license)
 
 ---
 
@@ -176,8 +193,8 @@ windows-service-process-monitoring-agent/
 **1. Clone or download the project:**
 
 ```bash
-git clone https://github.com/niteshghimire/windows-monitor-agent.git
-cd "windows-monitor-agent"
+git clone https://github.com/niteshghimire0147/windows-edr-agent.git
+cd windows-edr-agent
 ```
 
 **2. Install dependencies:**
@@ -496,3 +513,9 @@ python main.py --signatures --tree --no-color > audit_output.txt
 ---
 
 *Built as part of a hands-on defensive security project to demonstrate real-world Windows threat detection techniques.*
+
+---
+
+## 📜 License
+
+This project is licensed under the [MIT License](LICENSE).
