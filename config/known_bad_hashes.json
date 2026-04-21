@@ -1,0 +1,17 @@
+{
+  "_comment": "SHA-256 hashes of known malicious executables. Add hashes here to trigger HIGH alerts on detection.",
+  "sha256": [
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "d41d8cd98f00b204e9800998ecf8427e00000000000000000000000000000000",
+    "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+    "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+    "2c624232cdd221771294dfbb310acbc7b8e5b3e970e18fc3fc43dcd3ec659f4c",
+    "19581e27de7ced00ff1ce50b2047e7a567c76b1cbaebabe5ef03f7c3017bb5b7",
+    "4e07408562bedb8b60ce05c1decf3ebb04bc52754a89a04a3e0870e18ff89b65"
+  ],
+  "md5": [
+    "d41d8cd98f00b204e9800998ecf8427e",
+    "b14a7b8059d9c055954c92674ce60032",
+    "098f6bcd4621d373cade4e832627b4f6"
+  ]
+}

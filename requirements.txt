@@ -1,0 +1,5 @@
+psutil>=5.9.0
+wmi>=1.5.1
+colorama>=0.4.6
+tabulate>=0.9.0
+rich>=13.0.0
