@@ -14,6 +14,15 @@ from modules.alert_engine import Alert, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY
 SEPARATOR = "=" * 72
 THIN_SEP  = "-" * 72
 
+# ── Report quality threshold ──────────────────────────────────────────────────
+# Alerts below this score are pure inventory observations (unlisted process,
+# no behavioral signal).  They are counted in summary statistics but excluded
+# from detailed report sections to keep output analyst-readable.
+# Score 20 = base UNKNOWN with no risk modifiers.
+# Score 25 = UNKNOWN with at least one elevating signal (system account, etc.).
+# Tune upward (e.g. 30) for even quieter reports on busy systems.
+MIN_REPORT_SCORE: int = 25
+
 
 class ReportGenerator:
     """
@@ -27,16 +36,25 @@ class ReportGenerator:
         os.makedirs(report_dir, exist_ok=True)
 
     def generate(self, alerts: list[Alert], stats: dict) -> tuple[str, str]:
-        """Write both report files. Returns (txt_path, json_path)."""
+        """
+        Write both report files. Returns (txt_path, json_path).
+
+        Only alerts at or above MIN_REPORT_SCORE appear in detailed report
+        sections.  Summary statistics (passed via `stats`) are computed over
+        ALL alerts by the engine and remain accurate regardless of this filter.
+        """
         ts        = timestamp_for_filename()
         txt_path  = os.path.join(self.report_dir, f"report_{ts}.txt")
         json_path = os.path.join(self.report_dir, f"report_{ts}.json")
 
+        # Threshold filter: drop pure inventory noise from report output
+        reportable = [a for a in alerts if a.score >= MIN_REPORT_SCORE]
+
         with open(txt_path,  "w", encoding="utf-8") as f:
-            f.write(self._build_text_report(alerts, stats))
+            f.write(self._build_text_report(reportable, stats))
 
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(self._build_json_report(alerts, stats), f, indent=2, default=str)
+            json.dump(self._build_json_report(reportable, stats), f, indent=2, default=str)
 
         return txt_path, json_path
 
@@ -105,16 +123,17 @@ class ReportGenerator:
                 [
                     a.score,
                     a.severity,
+                    a.confidence,
                     a.category,
                     a.pid or "N/A",
                     a.process_name or "N/A",
-                    (a.description[:55] + "...") if len(a.description) > 58 else a.description,
+                    (a.description[:50] + "...") if len(a.description) > 53 else a.description,
                 ]
                 for a in top10
             ]
             lines.append(tabulate(
                 top_rows,
-                headers=["Score", "Severity", "Category", "PID", "Process", "Description"],
+                headers=["Score", "Severity", "Confidence", "Category", "PID", "Process", "Description"],
                 tablefmt="simple",
             ))
         else:
@@ -168,13 +187,15 @@ class ReportGenerator:
         lines += ["", SEPARATOR, "[ DETAILED FINDINGS ]", SEPARATOR]
 
         category_labels = {
-            "PARENT_CHILD":    "Parent-Child Relationship Anomalies",
-            "BLACKLIST":       "Blacklisted Processes",
-            "HASH_MATCH":      "Known-Bad Hash Matches",
-            "TYPOSQUAT":       "Typosquatting / Name Masquerading",
-            "SUSPICIOUS_PATH": "Processes in Suspicious Paths",
-            "SERVICE":         "Suspicious Service Configurations",
-            "UNAUTHORIZED":    "Unauthorized / Unknown Processes",
+            "PARENT_CHILD":     "Parent-Child Relationship Anomalies",
+            "BLACKLIST":        "Blacklisted Processes",
+            "HASH_MATCH":       "Known-Bad Hash Matches",
+            "TYPOSQUAT":        "Typosquatting / Name Masquerading",
+            "SUSPICIOUS_PATH":  "Processes in Suspicious Paths",
+            "SERVICE":          "Suspicious Service Configurations",
+            "INCOMPLETE_DATA":  "No Executable Path (Access-Denied / Hollow Suspect)",
+            "UNAUTHORIZED":     "Confirmed Injection Suspects (Multi-Signal)",
+            "UNKNOWN":          "Unlisted Processes Outside Standard Install Dirs",
         }
 
         for cat_key, cat_label in category_labels.items():
@@ -183,20 +204,21 @@ class ReportGenerator:
                 continue
             lines += ["", f"  ── {cat_label} ({len(cat_alerts)}) ──"]
             for alert in cat_alerts:
-                lines.append(f"  [{alert.severity}] [Score: {alert.score}/100] {alert.description}")
-                lines.append(f"         Timestamp : {alert.timestamp}")
-                lines.append(f"         PID       : {alert.pid or 'N/A'}")
-                lines.append(f"         Process   : {alert.process_name or 'N/A'}")
-                lines.append(f"         Path      : {alert.exe_path or 'N/A'}")
+                lines.append(f"  [{alert.severity}] [Score: {alert.score}/100] [Confidence: {alert.confidence}] {alert.description}")
+                lines.append(f"         Reason     : {getattr(alert, 'reason_code', 'N/A')}")
+                lines.append(f"         Timestamp  : {alert.timestamp}")
+                lines.append(f"         PID        : {alert.pid or 'N/A'}")
+                lines.append(f"         Process    : {alert.process_name or 'N/A'}")
+                lines.append(f"         Path       : {alert.exe_path or 'N/A'}")
                 if alert.file_hash:
-                    lines.append(f"         SHA-256   : {alert.file_hash}")
+                    lines.append(f"         SHA-256    : {alert.file_hash}")
                 if alert.signed is not None:
-                    lines.append(f"         Signed    : {'Yes' if alert.signed else 'No'} ({alert.sign_subject or 'N/A'})")
+                    lines.append(f"         Signed     : {'Yes' if alert.signed else 'No'} ({alert.sign_subject or 'N/A'})")
                 if alert.mitre_id:
-                    lines.append(f"         MITRE     : {alert.mitre_id} — {alert.mitre_name} [{alert.mitre_tactic}]")
+                    lines.append(f"         MITRE      : {alert.mitre_id} — {alert.mitre_name} [{alert.mitre_tactic}]")
                 for k, v in alert.details.items():
                     if k not in ("username", "exe_path"):
-                        lines.append(f"         {k:<14}: {v}")
+                        lines.append(f"         {k:<15}: {v}")
                 lines.append("")
 
         lines += [SEPARATOR, "  END OF REPORT", SEPARATOR]
@@ -206,11 +228,12 @@ class ReportGenerator:
         rows = []
         for a in alerts:
             desc = a.description
-            if len(desc) > 55:
-                desc = desc[:52] + "..."
+            if len(desc) > 50:
+                desc = desc[:47] + "..."
             rows.append([
                 a.timestamp,
                 a.score,
+                a.confidence,
                 a.category,
                 a.pid or "N/A",
                 a.process_name or "N/A",
@@ -219,7 +242,7 @@ class ReportGenerator:
             ])
         return tabulate(
             rows,
-            headers=["Timestamp", "Score", "Category", "PID", "Process", "MITRE", "Description"],
+            headers=["Timestamp", "Score", "Confidence", "Category", "PID", "Process", "MITRE", "Description"],
             tablefmt="simple",
         )
 

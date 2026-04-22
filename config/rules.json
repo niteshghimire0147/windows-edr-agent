@@ -50,7 +50,9 @@
     "SERVICE":         {"id": "T1543.003", "name": "Windows Service",                    "tactic": "Persistence / Privilege Escalation"},
     "SUSPICIOUS_PATH": {"id": "T1036.005", "name": "Match Legitimate Name or Location",  "tactic": "Defense Evasion"},
     "UNAUTHORIZED":    {"id": "T1055",     "name": "Process Injection",                  "tactic": "Defense Evasion / Privilege Escalation"},
-    "HASH_MATCH":      {"id": "T1204",     "name": "User Execution",                     "tactic": "Execution"}
+    "HASH_MATCH":      {"id": "T1204",     "name": "User Execution",                     "tactic": "Execution"},
+    "UNKNOWN":         {"id": "",          "name": "",                                   "tactic": ""},
+    "SYSTEM":          {"id": "",          "name": "Known System Process",               "tactic": ""}
   },
   "suspicious_paths": [
     "\\temp\\",

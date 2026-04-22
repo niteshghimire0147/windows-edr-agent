@@ -6,7 +6,7 @@ Produces an annotated ASCII process tree with anomaly markers.
 import psutil
 from modules.alert_engine import (
     Alert, AlertEngine,
-    SEVERITY_HIGH, CATEGORY_PARENT_CHILD,
+    SEVERITY_SUSPICIOUS, CATEGORY_PARENT_CHILD,
 )
 
 
@@ -91,7 +91,7 @@ class ProcessMonitor:
             if rule:
                 anomalous_pids.add(proc["pid"])
                 engine.add(Alert(
-                    severity=SEVERITY_HIGH,
+                    severity=SEVERITY_SUSPICIOUS,
                     category=CATEGORY_PARENT_CHILD,
                     description=(
                         f"Suspicious parent-child: {parent_name} -> {proc['name']} "
