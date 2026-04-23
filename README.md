@@ -14,7 +14,8 @@ The agent continuously analyzes running processes, service configurations, paren
 
 ## 🎥 Demo
 
-![Dashboard](screenshots/dashboard.png)
+![Dashboard]
+![alt text](image.png)
 
 ---
 
