@@ -45,7 +45,7 @@
   ],
   "category_mitre": {
     "PARENT_CHILD":    {"id": "T1059",     "name": "Command and Scripting Interpreter", "tactic": "Execution"},
-    "BLACKLIST":       {"id": "T1036",     "name": "Masquerading",                       "tactic": "Defense Evasion"},
+    "BLACKLIST":       {"id": "T1588.002", "name": "Obtain Capabilities: Tool",           "tactic": "Resource Development"},
     "TYPOSQUAT":       {"id": "T1036.004", "name": "Masquerade Task or Service",         "tactic": "Defense Evasion"},
     "SERVICE":         {"id": "T1543.003", "name": "Windows Service",                    "tactic": "Persistence / Privilege Escalation"},
     "SUSPICIOUS_PATH": {"id": "T1036.005", "name": "Match Legitimate Name or Location",  "tactic": "Defense Evasion"},

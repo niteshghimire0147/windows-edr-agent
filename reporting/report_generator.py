@@ -9,7 +9,7 @@ import socket
 import datetime
 from tabulate import tabulate
 from utils.helpers import timestamp_for_filename
-from modules.alert_engine import Alert, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW
+from modules.alert_engine import Alert, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_SYSTEM
 
 SEPARATOR = "=" * 72
 THIN_SEP  = "-" * 72
@@ -282,10 +282,10 @@ class ReportGenerator:
         return {
             "report_metadata": {
                 "generated_at": now.isoformat(),
-                "generated_at_utc": now.utcnow().isoformat() + "Z",
+                "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "hostname": hostname,
                 "agent": "Windows Service & Process Monitoring Agent",
-                "version": "2.0",
+                "version": "3.0",
             },
             "executive_summary": {
                 "overall_risk_level": risk_level,
@@ -302,6 +302,7 @@ class ReportGenerator:
                 SEVERITY_HIGH:   [a.to_dict() for a in alerts if a.severity == SEVERITY_HIGH],
                 SEVERITY_MEDIUM: [a.to_dict() for a in alerts if a.severity == SEVERITY_MEDIUM],
                 SEVERITY_LOW:    [a.to_dict() for a in alerts if a.severity == SEVERITY_LOW],
+                SEVERITY_SYSTEM: [a.to_dict() for a in alerts if a.severity == SEVERITY_SYSTEM],
             },
             "all_alerts": [a.to_dict() for a in alerts],
         }

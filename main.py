@@ -18,6 +18,7 @@ Recommended: run as Administrator for full process and service visibility.
 """
 
 import argparse
+import atexit
 import json
 import os
 import sys
@@ -137,7 +138,7 @@ def _inject_baseline_alerts(
     # ── New processes ─────────────────────────────────────────────────────
     for proc in diff_procs.get("new", []):
         engine.add(Alert(
-            severity=SEVERITY_MEDIUM,
+            severity=SEVERITY_SUSPICIOUS,
             category=CATEGORY_UNAUTHORIZED,
             description=f"[BASELINE] New process appeared since baseline: {proc.get('name', '?')}",
             pid=proc.get("pid"),
@@ -157,7 +158,7 @@ def _inject_baseline_alerts(
     # ── New services ──────────────────────────────────────────────────────
     for svc in diff_svcs.get("new", []):
         is_autostart = svc.get("start_mode", "").lower() in ("auto", "automatic")
-        severity     = SEVERITY_HIGH if is_autostart else SEVERITY_MEDIUM
+        severity     = SEVERITY_MALICIOUS if is_autostart else SEVERITY_SUSPICIOUS
         engine.add(Alert(
             severity=severity,
             category=CATEGORY_SERVICE,
@@ -183,7 +184,7 @@ def _inject_baseline_alerts(
     # ── Changed services ──────────────────────────────────────────────────
     for change in diff_svcs.get("changed", []):
         field    = change.get("field", "")
-        severity = SEVERITY_HIGH if field == "path" else SEVERITY_MEDIUM
+        severity = SEVERITY_MALICIOUS if field == "path" else SEVERITY_SUSPICIOUS
         mitre    = path_mitre if field == "path" else svc_mitre
         engine.add(Alert(
             severity=severity,
@@ -560,12 +561,11 @@ def do_single_scan(args, whitelist, blacklist, blacklist_patterns,
         print_alert_plain(a, use_color)
 
     # Tier 2 — SUSPICIOUS: behavioral indicators (score 40–70)
-    # Includes: typosquats, suspicious paths, parent-child anomalies, and
-    # processes with no resolvable exe path (INCOMPLETE_DATA).
+    # NOTE: PARENT_CHILD already shown in STEP 2 above — excluded here to
+    # avoid duplicate output.  Counts in summary_stats() still include them.
     suspicious_alerts = (
         engine.get_by_category("TYPOSQUAT")
         + engine.get_by_category("SUSPICIOUS_PATH")
-        + engine.get_by_category("PARENT_CHILD")
         + engine.get_by_category(CATEGORY_INCOMPLETE_DATA)
     )
     if suspicious_alerts:
@@ -621,6 +621,7 @@ def do_watch_loop(args, whitelist, blacklist, blacklist_patterns,
     interval  = args.watch
     dashboard = args.dashboard
     logger    = MonitorLogger(log_dir=args.log_dir)
+    atexit.register(logger.close)   # flush log on Ctrl+C / sys.exit()
     reporter  = ReportGenerator(report_dir=args.report_dir)
     monitor   = ProcessMonitor()
     bm        = BaselineManager()
@@ -750,6 +751,8 @@ def do_watch_loop(args, whitelist, blacklist, blacklist_patterns,
 
             print(f"\n  [Next scan in {interval}s - Ctrl+C to stop]\n")
             time.sleep(interval)
+
+    logger.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -82,7 +82,7 @@ class BaselineManager:
             "metadata": {
                 "created_at":    timestamp_now(),
                 "hostname":      socket.gethostname(),
-                "agent_version": "2.0",
+                "agent_version": "3.0",
                 "process_count": len(proc_map),
                 "service_count": len(svc_map),
             },

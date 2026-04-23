@@ -9,139 +9,235 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 
-# Import alert engine — adjust if class/function names differ
 try:
-    from modules.alert_engine import Alert, AlertEngine, compute_score
-    HAS_COMPUTE_SCORE = True
+    from modules.alert_engine import (
+        Alert, AlertEngine, compute_score, compute_confidence, compute_reason_code,
+        SEVERITY_MALICIOUS, SEVERITY_SUSPICIOUS, SEVERITY_LOW, SEVERITY_SYSTEM,
+        CATEGORY_BLACKLIST, CATEGORY_HASH_MATCH, CATEGORY_UNKNOWN,
+        CATEGORY_INCOMPLETE_DATA, CATEGORY_SUSPICIOUS_PATH, CATEGORY_TYPOSQUAT,
+    )
+    HAS_ENGINE = True
 except ImportError:
-    HAS_COMPUTE_SCORE = False
-
-try:
-    from modules.alert_engine import AlertEngine
-    HAS_ALERT_ENGINE = True
-except ImportError:
-    HAS_ALERT_ENGINE = False
+    HAS_ENGINE = False
 
 
-def make_alert(severity="HIGH", category="BLACKLIST", process_name="malware.exe",
-               description="Test alert", pid=1234):
-    """Helper to create an Alert dataclass or dict for testing."""
-    try:
-        from modules.alert_engine import Alert
-        return Alert(
-            severity=severity,
-            category=category,
-            description=description,
-            pid=pid,
-            process_name=process_name,
-            exe_path=f"C:\\Windows\\Temp\\{process_name}",
-            file_hash=None,
-            signed=False,
-            mitre_id="T1059",
-            mitre_name="Command and Scripting Interpreter",
-            mitre_tactic="Execution",
-            score=75,
-            details={},
-        )
-    except (ImportError, TypeError):
+def make_alert(
+    severity=None,
+    category=CATEGORY_BLACKLIST if HAS_ENGINE else "BLACKLIST",
+    process_name="malware.exe",
+    description="Test alert",
+    pid=1234,
+):
+    if not HAS_ENGINE:
         return {
-            "severity": severity,
+            "severity": severity or "MALICIOUS",
             "category": category,
             "description": description,
             "pid": pid,
             "process_name": process_name,
         }
+    return Alert(
+        severity=severity or SEVERITY_MALICIOUS,
+        category=category,
+        description=description,
+        pid=pid,
+        process_name=process_name,
+        exe_path=f"C:\\Windows\\Temp\\{process_name}",
+        mitre_id="T1059",
+        mitre_name="Command and Scripting Interpreter",
+        mitre_tactic="Execution",
+        details={},
+    )
 
+
+# ── Import / instantiation ────────────────────────────────────────────────
 
 class TestAlertEngineBasics:
     def test_module_imports(self):
-        try:
-            from modules import alert_engine  # noqa: F401
-            assert True
-        except ImportError as e:
-            pytest.skip(f"alert_engine not importable (may need Windows WMI): {e}")
+        if not HAS_ENGINE:
+            pytest.skip("alert_engine not importable")
+        assert True
 
     def test_alert_engine_instantiates(self):
-        if not HAS_ALERT_ENGINE:
+        if not HAS_ENGINE:
             pytest.skip("AlertEngine not available")
         engine = AlertEngine()
         assert engine is not None
 
     def test_add_alert_and_retrieve(self):
-        if not HAS_ALERT_ENGINE:
+        if not HAS_ENGINE:
             pytest.skip("AlertEngine not available")
-        from modules.alert_engine import AlertEngine
         engine = AlertEngine()
-        alert = make_alert()
-        if hasattr(engine, "add"):
-            engine.add(alert)
-            all_alerts = engine.get_all() if hasattr(engine, "get_all") else engine.alerts
-            assert len(all_alerts) >= 1
-        else:
-            pytest.skip("AlertEngine.add() not found")
+        engine.add(make_alert())
+        assert len(engine.get_all()) == 1
 
-    def test_alert_count_by_severity(self):
-        if not HAS_ALERT_ENGINE:
+    def test_summary_stats_has_all_severity_keys(self):
+        if not HAS_ENGINE:
             pytest.skip("AlertEngine not available")
-        from modules.alert_engine import AlertEngine
         engine = AlertEngine()
-        if hasattr(engine, "add"):
-            for sev in ["HIGH", "HIGH", "MEDIUM", "LOW"]:
-                engine.add(make_alert(severity=sev))
-            if hasattr(engine, "count_by_severity"):
-                counts = engine.count_by_severity()
-                assert counts.get("HIGH", 0) == 2
-                assert counts.get("MEDIUM", 0) == 1
-                assert counts.get("LOW", 0) == 1
+        engine.add(make_alert(severity=SEVERITY_MALICIOUS,  category=CATEGORY_BLACKLIST))
+        engine.add(make_alert(severity=SEVERITY_SUSPICIOUS, category=CATEGORY_SUSPICIOUS_PATH,
+                              description="susp", process_name="susp.exe"))
+        engine.add(make_alert(severity=SEVERITY_LOW,        category=CATEGORY_UNKNOWN,
+                              description="unknown", process_name="unk.exe"))
+        stats = engine.summary_stats()
+        assert stats["by_severity"][SEVERITY_MALICIOUS]  >= 1
+        assert stats["by_severity"][SEVERITY_SUSPICIOUS] >= 1
+        assert stats["by_severity"][SEVERITY_LOW]        >= 1
+        assert SEVERITY_SYSTEM in stats["by_severity"]
 
+
+# ── Scoring ───────────────────────────────────────────────────────────────
 
 class TestScoreComputation:
-    def test_hash_match_is_highest_score(self):
-        if not HAS_COMPUTE_SCORE:
-            pytest.skip("compute_score not available")
-        hash_score = compute_score("HIGH", "HASH_MATCH")
-        blacklist_score = compute_score("HIGH", "BLACKLIST")
-        assert hash_score >= blacklist_score
+    def test_hash_match_highest_score(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_score(SEVERITY_MALICIOUS, CATEGORY_HASH_MATCH) == 100
 
-    def test_critical_severity_maximum(self):
-        if not HAS_COMPUTE_SCORE:
-            pytest.skip("compute_score not available")
-        score = compute_score("CRITICAL", "HASH_MATCH")
-        assert score >= 90
+    def test_blacklist_score_95(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_score(SEVERITY_MALICIOUS, CATEGORY_BLACKLIST) == 95
 
-    def test_low_severity_minimum(self):
-        if not HAS_COMPUTE_SCORE:
-            pytest.skip("compute_score not available")
-        score = compute_score("LOW", "SERVICE")
-        assert 0 <= score <= 50
+    def test_incomplete_data_always_40_regardless_of_severity(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        # Score is driven by _CATEGORY_BASE_SCORES override — severity arg is ignored
+        assert compute_score(SEVERITY_MALICIOUS,  CATEGORY_INCOMPLETE_DATA) == 40
+        assert compute_score(SEVERITY_SUSPICIOUS, CATEGORY_INCOMPLETE_DATA) == 40
+        assert compute_score(SEVERITY_LOW,        CATEGORY_INCOMPLETE_DATA) == 40
 
+    def test_unknown_base_score_20(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_score(SEVERITY_LOW, CATEGORY_UNKNOWN) == 20
+
+    def test_score_clamped_0_to_100(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        score = compute_score(SEVERITY_MALICIOUS, CATEGORY_HASH_MATCH)
+        assert 0 <= score <= 100
+
+
+# ── Confidence ────────────────────────────────────────────────────────────
+
+class TestConfidence:
+    def test_hash_match_is_high_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_confidence(CATEGORY_HASH_MATCH) == "HIGH"
+
+    def test_blacklist_is_high_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_confidence(CATEGORY_BLACKLIST) == "HIGH"
+
+    def test_suspicious_path_is_medium_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_confidence(CATEGORY_SUSPICIOUS_PATH) == "MEDIUM"
+
+    def test_unknown_is_low_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_confidence(CATEGORY_UNKNOWN) == "LOW"
+
+    def test_incomplete_data_is_low_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_confidence(CATEGORY_INCOMPLETE_DATA) == "LOW"
+
+
+# ── Reason codes ──────────────────────────────────────────────────────────
+
+class TestReasonCodes:
+    def test_blacklist_reason_code(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_reason_code(CATEGORY_BLACKLIST) == "BLACKLIST_MATCH"
+
+    def test_hash_match_reason_code(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_reason_code(CATEGORY_HASH_MATCH) == "KNOWN_BAD_HASH"
+
+    def test_incomplete_data_reason_code(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        assert compute_reason_code(CATEGORY_INCOMPLETE_DATA) == "NO_EXE_PATH"
+
+
+# ── Auto-populate in __post_init__ ────────────────────────────────────────
+
+class TestAlertAutoFields:
+    def test_alert_auto_populates_score(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        a = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                  description="test")
+        assert a.score == 95
+
+    def test_alert_auto_populates_confidence(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        a = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                  description="test")
+        assert a.confidence == "HIGH"
+
+    def test_alert_auto_populates_reason_code(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        a = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                  description="test")
+        assert a.reason_code == "BLACKLIST_MATCH"
+
+    def test_explicit_score_not_overwritten(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        a = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                  description="test", score=42)
+        assert a.score == 42
+
+
+# ── Deduplication ─────────────────────────────────────────────────────────
 
 class TestFingerprintDeduplication:
     def test_identical_alerts_same_fingerprint(self):
-        """Two alerts with same severity+category+description+name → same fingerprint."""
-        try:
-            from modules.alert_engine import Alert
-        except ImportError:
-            pytest.skip("Alert not importable")
+        if not HAS_ENGINE:
+            pytest.skip()
+        a1 = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                   description="malware.exe detected", process_name="malware.exe")
+        a2 = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                   description="malware.exe detected", process_name="malware.exe",
+                   pid=9999)   # different PID — fingerprint must still match
+        assert a1.fingerprint == a2.fingerprint
 
-        a1 = make_alert(severity="HIGH", category="BLACKLIST",
-                        description="malware.exe detected", process_name="malware.exe")
-        a2 = make_alert(severity="HIGH", category="BLACKLIST",
-                        description="malware.exe detected", process_name="malware.exe")
+    def test_different_process_different_fingerprint(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        a1 = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                   description="malware.exe detected", process_name="malware.exe")
+        a2 = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                   description="trojan.exe detected", process_name="trojan.exe")
+        assert a1.fingerprint != a2.fingerprint
 
-        if hasattr(a1, "fingerprint") and hasattr(a2, "fingerprint"):
-            assert a1.fingerprint == a2.fingerprint
-        elif isinstance(a1, dict):
-            pytest.skip("Using dict alerts, no fingerprint")
+    def test_engine_deduplicates_identical_alerts(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        engine = AlertEngine()
+        a = Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                  description="dup test", process_name="dup.exe")
+        engine.add(a)
+        engine.add(a)   # same fingerprint → should be dropped
+        assert len(engine.get_all()) == 1
 
-    def test_different_alerts_different_fingerprint(self):
-        try:
-            from modules.alert_engine import Alert
-        except ImportError:
-            pytest.skip("Alert not importable")
-
-        a1 = make_alert(process_name="malware.exe", description="malware.exe detected")
-        a2 = make_alert(process_name="trojan.exe", description="trojan.exe detected")
-
-        if hasattr(a1, "fingerprint") and hasattr(a2, "fingerprint"):
-            assert a1.fingerprint != a2.fingerprint
+    def test_engine_keeps_distinct_alerts(self):
+        if not HAS_ENGINE:
+            pytest.skip()
+        engine = AlertEngine()
+        engine.add(Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                         description="alert A", process_name="a.exe"))
+        engine.add(Alert(severity=SEVERITY_MALICIOUS, category=CATEGORY_BLACKLIST,
+                         description="alert B", process_name="b.exe"))
+        assert len(engine.get_all()) == 2
