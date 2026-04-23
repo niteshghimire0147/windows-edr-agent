@@ -15,7 +15,11 @@ The agent continuously analyzes running processes, service configurations, paren
 ## 🎥 Demo
 
 ![Dashboard]
-![alt text](image.png)
+![alt text](screenshots/dashboard.png)
+![Malicious-Detection]
+![alt text](screenshots/malicious_detection.png)
+![Output]
+![alt text](screenshots/report_output.png)
 
 ---
 
